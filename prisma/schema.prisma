@@ -1,0 +1,74 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Admin {
+  id           Int       @id @default(autoincrement())
+  email        String    @unique
+  passwordHash String
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+
+  @@map("admins")
+}
+
+model Service {
+  id              Int       @id @default(autoincrement())
+  title           String
+  description     String
+  imageUrl        String
+  priceInCents    Int
+  durationMinutes Int
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+
+  appointments Appointment[]
+
+  @@map("services")
+}
+
+model Client {
+  id        Int       @id @default(autoincrement())
+  name      String
+  phone     String
+  email     String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  appointments Appointment[]
+
+  @@map("clients")
+}
+
+model Appointment {
+  id                  Int      @id @default(autoincrement())
+  clientId            Int
+  serviceId           Int
+  scheduledAt         DateTime
+  endsAt              DateTime
+  status              String   @default("agendado")
+  chargedPriceInCents Int
+  notes               String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  client  Client  @relation(fields: [clientId], references: [id])
+  service Service @relation(fields: [serviceId], references: [id])
+
+  @@index([scheduledAt])
+  @@index([endsAt])
+  @@index([clientId])
+  @@index([serviceId])
+  @@map("appointments")
+}

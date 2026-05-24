@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install *)",
+      "Bash(npx prisma *)",
+      "Bash(npm ls *)",
+      "Bash(npm run *)",
+      "Bash(curl -sf -o /dev/null http://localhost:3000/api -w \"%{http_code}\")",
+      "Bash(curl -s -X POST http://localhost:3000/auth/login -H 'Content-Type: application/json' -d '{\"email\":\"admin@salao.local\",\"password\":\"trocar-em-producao\"}')",
+      "Bash(curl -s -X POST http://localhost:3000/auth/login -H 'Content-Type: application/json' -d '{\"email\":\"admin@salao.local\",\"password\":\"errada\"}')",
+      "Bash(curl -s -X POST http://localhost:3000/auth/login -H 'Content-Type: application/json' -d '{\"email\":\"naoemail\",\"password\":\"\"}')",
+      "Bash(curl *)"
+    ]
+  }
+}

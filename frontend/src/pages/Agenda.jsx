@@ -1,121 +1,90 @@
 import { useState, useEffect } from 'react';
-import FullCalendar from '@fullcalendar/react';
-import dayGridPlugin from '@fullcalendar/daygrid';
-import timeGridPlugin from '@fullcalendar/timegrid';
-import interactionPlugin from '@fullcalendar/interaction';
-import ptBrLocale from '@fullcalendar/core/locales/pt-br';
+import { Calendar, Badge, Panel, Stack, Divider } from 'rsuite';
 import { api } from '../services/api';
 
 export default function Agenda() {
   const [agendamentos, setAgendamentos] = useState([]);
-  const [dataSelecionadaFormatada, setDataSelecionadaFormatada] = useState(new Date().toLocaleDateString('pt-BR'));
-  
-  // Cria o filtro inicial com o dia de hoje no formato YYYY-MM-DD
-  const hoje = new Date();
-  const hojeString = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-${String(hoje.getDate()).padStart(2, '0')}`;
-  const [dataFiltro, setDataFiltro] = useState(hojeString);
+  const [dataSelecionada, setDataSelecionada] = useState(new Date());
 
   useEffect(() => {
-    carregarAgendamentos();
+    buscarAgendamentos();
   }, []);
 
-  const carregarAgendamentos = async () => {
+  const buscarAgendamentos = async () => {
     try {
       const dados = await api('/appointments', { method: 'GET' });
       setAgendamentos(dados);
     } catch (err) {
-      console.error('Erro ao carregar agenda:', err);
+      console.error("Erro ao carregar agenda:", err);
     }
   };
 
-  const handleDateClick = (arg) => {
-    setDataFiltro(arg.dateStr); // O FullCalendar entrega exatamente "YYYY-MM-DD"
-    const partes = arg.dateStr.split('-');
-    setDataSelecionadaFormatada(`${partes[2]}/${partes[1]}/${partes[0]}`); // Transforma em DD/MM/YYYY para o título
-  };
-
-  // Filtro inteligente e livre de bugs de fuso horário
-  const agendamentosDoDia = agendamentos.filter((ag) => {
-    if (!ag || !ag.scheduledAt) return false;
-    
-    const dateObj = new Date(ag.scheduledAt);
-    if (isNaN(dateObj.getTime())) return false;
-    
-    // Extrai o ano, mês e dia local do agendamento do banco
-    const ano = dateObj.getFullYear();
-    const mes = String(dateObj.getMonth() + 1).padStart(2, '0');
-    const dia = String(dateObj.getDate()).padStart(2, '0');
-    const dataAgendamentoString = `${ano}-${mes}-${dia}`;
-    
-    return dataAgendamentoString === dataFiltro;
+  // Lógica Matemática: Filtra agendamentos do dia selecionado
+  const agendamentosDoDia = agendamentos.filter(ag => {
+    const dataAg = new Date(ag.scheduledAt || ag.date);
+    return dataAg.toDateString() === dataSelecionada.toDateString();
   });
 
-  // Desenha as barrinhas coloridas dentro dos quadrados do calendário
-  const eventosCalendario = agendamentos
-    .filter(ag => ag && ag.scheduledAt && !isNaN(new Date(ag.scheduledAt).getTime()))
-    .map((ag) => ({
-      id: ag.id,
-      title: `${ag.client?.name || 'Cliente'} - ${ag.service?.title || 'Serviço'}`,
-      date: ag.scheduledAt 
-    }));
+  const receitaDoDia = agendamentosDoDia.reduce((acc, ag) => acc + (ag.chargedPriceInCents || 0), 0) / 100;
+
+  // Renderiza bolinhas coloridas no calendário para dias que têm serviço
+  function renderCell(date) {
+    const temServico = agendamentos.some(ag => new Date(ag.scheduledAt || ag.date).toDateString() === date.toDateString());
+    if (temServico) return <Badge style={{ background: '#7c3aed' }} />; // Pontinho roxo
+    return null;
+  }
 
   return (
     <div>
-      <div style={{ marginBottom: '20px' }}>
-        <FullCalendar
-          plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
-          initialView="dayGridMonth"
-          locale={ptBrLocale}
-          headerToolbar={{
-            left: 'prev,next today',
-            center: 'title',
-            right: 'dayGridMonth,timeGridWeek,timeGridDay'
-          }}
-          buttonText={{ today: 'Hoje', month: 'Mês', week: 'Semana', day: 'Dia' }}
-          height="450px"
-          dateClick={handleDateClick}
-          events={eventosCalendario} 
-        />
-      </div>
+      <h3 style={{ marginBottom: 20 }}>📅 Agenda de Atendimentos</h3>
 
-      <div style={{ padding: '20px', border: '1px solid #eee', borderRadius: '10px', background: '#fcfcfc' }}>
-        <h4>Horários de: <span style={{ color: '#7B2CBF' }}>{dataSelecionadaFormatada}</span></h4>
-        <hr />
+      {/* Cards de Resumo do Dia Selecionado */}
+      <Stack spacing={20} style={{ marginBottom: 20 }}>
+        <Panel shaded bordered style={{ flex: 1, background: '#f5f3ff', borderLeft: '5px solid #7c3aed' }}>
+          <div style={{ color: '#7c3aed', fontWeight: 'bold' }}>CLIENTES EM {dataSelecionada.toLocaleDateString('pt-BR')}</div>
+          <h2 style={{ margin: 0 }}>{agendamentosDoDia.length}</h2>
+        </Panel>
+        <Panel shaded bordered style={{ flex: 1, background: '#f0fdf4', borderLeft: '5px solid #22c55e' }}>
+          <div style={{ color: '#16a34a', fontWeight: 'bold' }}>RECEITA PREVISTA</div>
+          <h2 style={{ margin: 0 }}>R$ {receitaDoDia.toFixed(2).replace('.', ',')}</h2>
+        </Panel>
+      </Stack>
 
-        {agendamentosDoDia.length === 0 ? (
-          <p style={{ color: '#999', textAlign: 'center', padding: '20px' }}>Nenhum agendamento para este dia.</p>
-        ) : (
-          <ul style={{ listStyle: 'none', padding: 0 }}>
-            {agendamentosDoDia.map((ag) => {
-              const horario = new Date(ag.scheduledAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-              const clienteNome = ag.client?.name || 'Cliente Não Informado';
-              const servicoNome = ag.service?.title || 'Serviço Não Informado';
-              const valorReal = ag.service?.priceInCents ? `R$ ${(ag.service.priceInCents / 100).toFixed(2).replace('.', ',')}` : 'R$ 0,00';
+      <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
+        {/* Calendário */}
+        <div style={{ flex: 1, minWidth: '300px' }}>
+          <Calendar 
+            compact 
+            bordered 
+            renderCell={renderCell} 
+            onSelect={setDataSelecionada} 
+            value={dataSelecionada}
+          />
+        </div>
 
-              return (
-                <li key={ag.id} style={{
-                  padding: '15px',
-                  borderLeft: '5px solid #7B2CBF',
-                  background: 'white',
-                  marginBottom: '10px',
-                  borderRadius: '5px',
-                  boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center'
-                }}>
+        {/* Lista de Horários do Dia */}
+        <div style={{ flex: 1, minWidth: '300px' }}>
+          <h5>Horários para {dataSelecionada.toLocaleDateString('pt-BR')}</h5>
+          <Divider />
+          {agendamentosDoDia.length === 0 ? (
+            <p style={{ color: '#999', textAlign: 'center', marginTop: 50 }}>Nenhum horário marcado para este dia.</p>
+          ) : (
+            agendamentosDoDia.map(ag => (
+              <Panel key={ag.id} shaded style={{ marginBottom: 10, borderLeft: '4px solid #7c3aed' }}>
+                <Stack justify="space-between">
                   <div>
-                    <h5 style={{ margin: 0, color: '#7B2CBF' }}>{horario} - {servicoNome}</h5>
-                    <small style={{ color: '#666' }}>👤 Cliente: {clienteNome}</small>
+                    <b style={{ fontSize: '1.1em' }}>{new Date(ag.scheduledAt || ag.date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</b>
+                    <div style={{ color: '#666' }}>{ag.client?.name || 'Cliente'}</div>
                   </div>
-                  <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#2ecc71' }}>
-                    {valorReal}
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: '0.9em', fontWeight: 'bold' }}>{ag.service?.title}</div>
+                    <div style={{ color: '#16a34a' }}>R$ {(ag.chargedPriceInCents / 100).toFixed(2)}</div>
                   </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
+                </Stack>
+              </Panel>
+            ))
+          )}
+        </div>
       </div>
     </div>
   );

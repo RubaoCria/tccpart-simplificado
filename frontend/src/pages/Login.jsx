@@ -5,10 +5,12 @@ export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(false); // 1. Estado de loading
 
   const handleLogin = async (e) => {
-    e.preventDefault(); // SUA LÓGICA ORIGINAL MANTIDA
+    e.preventDefault();
     setError(null);
+    setLoading(true); // 2. Ativa o loading
 
     try {
       const data = await api('/auth/login', {
@@ -20,6 +22,7 @@ export default function Login() {
       window.location.href = '/'; 
     } catch (err) {
       setError(err.message);
+      setLoading(false); // 3. Desativa o loading em caso de erro
     }
   };
 
@@ -29,7 +32,7 @@ export default function Login() {
       display: 'flex', 
       alignItems: 'center', 
       justifyContent: 'center', 
-      background: '#21232F' // Cor DARK da sua paleta
+      background: '#21232F'
     }}>
       <div style={{ 
         width: '400px', 
@@ -57,6 +60,7 @@ export default function Login() {
               value={email} 
               onChange={(e) => setEmail(e.target.value)} 
               required 
+              disabled={loading} // Desabilita input durante o loading
               style={{ width: '100%', padding: '12px', marginTop: '8px', borderRadius: '6px', border: '1px solid #ccc' }}
               placeholder="admin@salao.com"
             />
@@ -68,25 +72,28 @@ export default function Login() {
               value={password} 
               onChange={(e) => setPassword(e.target.value)} 
               required 
+              disabled={loading} // Desabilita input durante o loading
               style={{ width: '100%', padding: '12px', marginTop: '8px', borderRadius: '6px', border: '1px solid #ccc' }}
               placeholder="••••••••"
             />
           </div>
           <button 
             type="submit" 
+            disabled={loading} // 4. Impede cliques múltiplos
             style={{ 
               padding: '12px', 
-              backgroundColor: '#7B2CBF', // Sua cor PRIMARY
+              backgroundColor: loading ? '#b892dc' : '#7B2CBF', // Cor mais clara se estiver carregando
               color: 'white', 
               border: 'none', 
               borderRadius: '6px', 
-              cursor: 'pointer', 
+              cursor: loading ? 'not-allowed' : 'pointer', 
               fontSize: '16px',
               fontWeight: 'bold',
-              marginTop: '10px'
+              marginTop: '10px',
+              transition: 'background-color 0.3s'
             }}
           >
-            Entrar
+            {loading ? 'Entrando...' : 'Entrar'}
           </button>
         </form>
       </div>

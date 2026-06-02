@@ -12,7 +12,8 @@ import { UpdateAppointmentDto } from './dto/update-appointment.dto';
 
 const APPOINTMENT_INCLUDE = {
   client: true,
-  service: true,
+  services: true, // ATUALIZADO: Agora retorna um array de serviços
+  barber: true,
 } as const;
 
 @Injectable()
@@ -21,24 +22,33 @@ export class AppointmentsService {
 
   async create(dto: CreateAppointmentDto) {
     await this.assertClientExists(dto.clientId);
-    const service = await this.fetchService(dto.serviceId);
+    await this.assertBarberExists(dto.barberId); 
+    
+    // Busca todos os serviços escolhidos para somar a duração
+    const services = await this.fetchServices(dto.serviceIds);
+    const totalDurationMinutes = services.reduce((total, service) => total + service.durationMinutes, 0);
+
     const scheduledAt = new Date(dto.scheduledAt);
-    const endsAt = computeEndsAt(scheduledAt, service.durationMinutes);
+    const endsAt = computeEndsAt(scheduledAt, totalDurationMinutes);
     const status = dto.status ?? 'agendado';
 
     if (status !== 'cancelado') {
-      await this.assertNoConflict(scheduledAt, endsAt);
+      await this.assertNoConflict(scheduledAt, endsAt, dto.barberId);
     }
 
     return this.prisma.appointment.create({
       data: {
         clientId: dto.clientId,
-        serviceId: dto.serviceId,
+        barberId: dto.barberId, 
         scheduledAt,
         endsAt,
         chargedPriceInCents: dto.chargedPriceInCents,
         status,
         notes: dto.notes,
+        // ATUALIZADO: Vincula múltiplos serviços ao agendamento
+        services: {
+          connect: dto.serviceIds.map((id) => ({ id })),
+        },
       },
       include: APPOINTMENT_INCLUDE,
     });
@@ -72,47 +82,65 @@ export class AppointmentsService {
   }
 
   async update(id: number, dto: UpdateAppointmentDto) {
-    const existing = await this.findOne(id);
+    // Agora incluímos os serviços antigos para poder recalcular caso a data mude mas os serviços não
+    const existing = await this.prisma.appointment.findUnique({
+      where: { id },
+      include: { services: true } 
+    });
+    
+    if (!existing) {
+      throw new NotFoundException(`Agendamento ${id} não encontrado`);
+    }
+    
     if (dto.clientId !== undefined) {
       await this.assertClientExists(dto.clientId);
     }
+    
+    if (dto.barberId !== undefined) {
+      await this.assertBarberExists(dto.barberId);
+    }
 
-    const slotChanged =
-      dto.scheduledAt !== undefined || dto.serviceId !== undefined;
+    // Usamos 'any' aqui para acessar serviceIds que foi alterado no DTO base
+    const updateDto = dto as any; 
+    const slotChanged = dto.scheduledAt !== undefined || updateDto.serviceIds !== undefined;
+    const barberChanged = dto.barberId !== undefined && dto.barberId !== existing.barberId;
 
     let scheduledAt = existing.scheduledAt;
     let endsAt = existing.endsAt;
 
     if (slotChanged) {
-      scheduledAt = dto.scheduledAt
-        ? new Date(dto.scheduledAt)
-        : existing.scheduledAt;
-      const serviceId = dto.serviceId ?? existing.serviceId;
-      const service = await this.fetchService(serviceId);
-      endsAt = computeEndsAt(scheduledAt, service.durationMinutes);
-    } else if (dto.serviceId === undefined && dto.scheduledAt === undefined) {
-      // sem mudança de slot — mantém o que existe
+      scheduledAt = dto.scheduledAt ? new Date(dto.scheduledAt) : existing.scheduledAt;
+      const serviceIds = updateDto.serviceIds ?? existing.services.map(s => s.id);
+      
+      const services = await this.fetchServices(serviceIds);
+      const totalDurationMinutes = services.reduce((total, service) => total + service.durationMinutes, 0);
+      endsAt = computeEndsAt(scheduledAt, totalDurationMinutes);
     }
 
     const finalStatus = dto.status ?? existing.status;
     const wasCancelled = existing.status === 'cancelado';
-    const needsConflictCheck =
-      finalStatus !== 'cancelado' && (slotChanged || wasCancelled);
+    const needsConflictCheck = finalStatus !== 'cancelado' && (slotChanged || wasCancelled || barberChanged);
+
+    const finalBarberId = dto.barberId ?? existing.barberId;
 
     if (needsConflictCheck) {
-      await this.assertNoConflict(scheduledAt, endsAt, id);
+      await this.assertNoConflict(scheduledAt, endsAt, finalBarberId, id);
     }
 
     return this.prisma.appointment.update({
       where: { id },
       data: {
         clientId: dto.clientId,
-        serviceId: dto.serviceId,
+        barberId: dto.barberId,
         scheduledAt: slotChanged ? scheduledAt : undefined,
         endsAt: slotChanged ? endsAt : undefined,
         chargedPriceInCents: dto.chargedPriceInCents,
         status: dto.status,
         notes: dto.notes,
+        // Se novos serviços foram enviados, atualiza a relação usando 'set'
+        services: updateDto.serviceIds ? {
+          set: updateDto.serviceIds.map((id: number) => ({ id }))
+        } : undefined,
       },
       include: APPOINTMENT_INCLUDE,
     });
@@ -134,25 +162,44 @@ export class AppointmentsService {
     }
   }
 
-  private async fetchService(serviceId: number): Promise<Service> {
-    const service = await this.prisma.service.findFirst({
-      where: { id: serviceId, deletedAt: null },
+  private async assertBarberExists(barberId: number) {
+    const barber = await this.prisma.barber.findFirst({
+      where: { id: barberId, deletedAt: null },
     });
-    if (!service) {
+    if (!barber) {
       throw new BadRequestException(
-        `Serviço ${serviceId} não encontrado ou foi removido`,
+        `Profissional ${barberId} não encontrado ou foi removido da equipe`,
       );
     }
-    return service;
+  }
+
+  // ATUALIZADO: Agora busca um Array de serviços para validar todos de uma vez
+  private async fetchServices(serviceIds: number[]): Promise<Service[]> {
+    if (!serviceIds || serviceIds.length === 0) {
+      throw new BadRequestException('É necessário selecionar pelo menos um serviço.');
+    }
+    
+    const services = await this.prisma.service.findMany({
+      where: { id: { in: serviceIds }, deletedAt: null },
+    });
+    
+    if (services.length !== serviceIds.length) {
+      throw new BadRequestException(
+        `Um ou mais serviços não foram encontrados ou foram removidos.`,
+      );
+    }
+    return services;
   }
 
   private async assertNoConflict(
     scheduledAt: Date,
     endsAt: Date,
+    barberId: number, 
     excludeId?: number,
   ) {
     const conflict = await this.prisma.appointment.findFirst({
       where: {
+        barberId, 
         status: { not: 'cancelado' },
         scheduledAt: { lt: endsAt },
         endsAt: { gt: scheduledAt },
@@ -161,8 +208,8 @@ export class AppointmentsService {
     });
     if (conflict) {
       throw new ConflictException(
-        `Conflito de horário com agendamento #${conflict.id} ` +
-          `(${conflict.scheduledAt.toISOString()} → ${conflict.endsAt.toISOString()})`,
+        `O profissional selecionado já possui um agendamento neste horário ` +
+          `(${conflict.scheduledAt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} → ${conflict.endsAt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })})`,
       );
     }
   }

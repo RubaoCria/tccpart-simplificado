@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Calendar, Badge, Panel, Stack, Divider } from 'rsuite';
+import { Calendar, Badge, Panel, Stack, Divider, Button, ButtonGroup, Progress } from 'rsuite';
 import { api } from '../services/api';
 import { FaMoneyBillWave, FaCreditCard, FaPix } from 'react-icons/fa6';
 import { FaRegCreditCard } from 'react-icons/fa';
-
+import BlurText from '../components/BlurText';
 // Sua Paleta Oficial
 const theme = {
   primary: '#7B2CBF',
@@ -18,6 +18,10 @@ export default function Dashboard() {
   const [agendamentos, setAgendamentos] = useState([]);
   const [totalClientes, setTotalClientes] = useState(0);
   const [dataSelecionada, setDataSelecionada] = useState(new Date());
+  const [modoVisualizacao, setModoVisualizacao] = useState('dia');
+  
+  // NOVO: Estado para armazenar os barbeiros reais
+  const [barbeiros, setBarbeiros] = useState([]);
 
   useEffect(() => {
     carregarDados();
@@ -25,22 +29,36 @@ export default function Dashboard() {
 
   const carregarDados = async () => {
     try {
-      const [clientes, dadosAgendamentos] = await Promise.all([
+      // NOVO: Busca clientes, agendamentos e barbeiros ao mesmo tempo
+      const [clientesApi, agendamentosApi, barbeirosApi] = await Promise.all([
         api('/clients', { method: 'GET' }),
-        api('/appointments', { method: 'GET' })
+        api('/appointments', { method: 'GET' }),
+        api('/barbers', { method: 'GET' })
       ]);
 
-      setTotalClientes(clientes.length);
-      setAgendamentos(dadosAgendamentos);
+      setTotalClientes(clientesApi.length);
+      setAgendamentos(agendamentosApi);
+      
+      // Formata os barbeiros para o padrão de label/value
+      setBarbeiros(barbeirosApi.map(b => ({
+        label: b.name,
+        value: String(b.id)
+      })));
     } catch (error) {
       console.error('Erro ao carregar dados do dashboard:', error);
     }
   };
 
-  const agendamentosDoDia = agendamentos.filter(ag => {
+  const agendamentosFiltrados = agendamentos.filter(ag => {
     if (!ag.scheduledAt && !ag.date) return false;
     const dataAg = new Date(ag.scheduledAt || ag.date);
-    return dataAg.toDateString() === dataSelecionada.toDateString();
+    
+    if (modoVisualizacao === 'dia') {
+      return dataAg.toDateString() === dataSelecionada.toDateString();
+    } else {
+      return dataAg.getMonth() === dataSelecionada.getMonth() && 
+             dataAg.getFullYear() === dataSelecionada.getFullYear();
+    }
   });
 
   let faturamentoDinheiro = 0;
@@ -48,10 +66,19 @@ export default function Dashboard() {
   let faturamentoDebito = 0;
   let faturamentoPix = 0;
   let historicoTransacoes = [];
+  
+  // Prepara o objeto de faturamento com base nos barbeiros reais do banco
+  let faturamentoPorBarbeiro = {};
+  barbeiros.forEach(b => {
+    faturamentoPorBarbeiro[b.value] = { nome: b.label, total: 0 };
+  });
+  faturamentoPorBarbeiro['Sem Barbeiro'] = { nome: 'Sem Barbeiro', total: 0 };
 
-  agendamentosDoDia.forEach(ag => {
+  agendamentosFiltrados.forEach(ag => {
     const status = localStorage.getItem(`appt_status_${ag.id}`);
     const pagamento = localStorage.getItem(`appt_payment_${ag.id}`);
+    const barbeiroIdSalvo = localStorage.getItem(`appt_barber_${ag.id}`) || String(ag.barberId);
+    
     const valor = (ag.chargedPriceInCents || 0) / 100;
 
     if (status === 'concluido') {
@@ -60,10 +87,18 @@ export default function Dashboard() {
       if (pagamento === 'debito') faturamentoDebito += valor;
       if (pagamento === 'pix') faturamentoPix += valor;
 
+      // Se o barbeiro existir no objeto, soma o valor a ele. Se não, vai para "Sem Barbeiro"
+      if (faturamentoPorBarbeiro[barbeiroIdSalvo]) {
+        faturamentoPorBarbeiro[barbeiroIdSalvo].total += valor;
+      } else {
+        faturamentoPorBarbeiro['Sem Barbeiro'].total += valor;
+      }
+
       historicoTransacoes.push({
         id: ag.id,
         cliente: ag.client?.name || 'Cliente',
         servico: ag.service?.title || 'Serviço',
+        barbeiro: barbeiros.find(b => b.value === barbeiroIdSalvo)?.label || 'Sem Barbeiro',
         hora: new Date(ag.scheduledAt || ag.date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
         valor: valor,
         metodo: pagamento
@@ -71,7 +106,10 @@ export default function Dashboard() {
     }
   });
 
-  const totalDoDia = faturamentoDinheiro + faturamentoCredito + faturamentoDebito + faturamentoPix;
+  const totalArrecadado = faturamentoDinheiro + faturamentoCredito + faturamentoDebito + faturamentoPix;
+
+  // Filtra apenas os barbeiros que geraram receita para não mostrar zerados
+  const barbeirosComReceita = Object.values(faturamentoPorBarbeiro).filter(b => b.total > 0);
 
   function renderCell(date) {
     const temConcluido = agendamentos.some(ag => {
@@ -86,7 +124,16 @@ export default function Dashboard() {
 
   return (
     <div style={{ padding: '10px' }}>
-      <h3 style={{ marginBottom: '25px', color: theme.dark }}>📊 Painel de Controle e Caixa</h3>
+      <Stack justify="space-between" style={{ marginBottom: '25px', flexWrap: 'wrap' }}>
+        <h3>
+          <BlurText text="📊 Painel de Controle" delay={100} />
+        </h3>
+        
+        <ButtonGroup>
+          <Button appearance={modoVisualizacao === 'dia' ? 'primary' : 'default'} onClick={() => setModoVisualizacao('dia')}>Visão Diária</Button>
+          <Button appearance={modoVisualizacao === 'mes' ? 'primary' : 'default'} onClick={() => setModoVisualizacao('mes')}>Visão Mensal</Button>
+        </ButtonGroup>
+      </Stack>
       
       <div style={{ marginBottom: '30px', background: theme.light, padding: '20px', borderRadius: '10px', border: `1px solid ${theme.muted}`, display: 'inline-block', minWidth: '220px' }}>
         <h5 style={{ color: theme.muted, margin: 0, fontSize: '13px' }}>👥 Total de Clientes Cadastrados</h5>
@@ -96,7 +143,7 @@ export default function Dashboard() {
       <div style={{ display: 'flex', gap: '30px', flexWrap: 'wrap' }}>
         
         <div style={{ flex: '1', minWidth: '320px', maxWidth: '400px' }}>
-          <h5 style={{ marginBottom: '15px', color: theme.dark }}>Selecione o Dia para Auditoria:</h5>
+          <h5 style={{ marginBottom: '15px', color: theme.dark }}>Selecione o Período para Auditoria:</h5>
           <div style={{ background: theme.light, border: `1px solid ${theme.muted}`, borderRadius: '8px', padding: '10px' }}>
             <Calendar compact bordered renderCell={renderCell} value={dataSelecionada} onSelect={setDataSelecionada} />
           </div>
@@ -104,19 +151,21 @@ export default function Dashboard() {
 
         <div style={{ flex: '2', minWidth: '350px' }}>
           <Stack justify="space-between" alignItems="center">
-            <h4 style={{ color: theme.dark }}>📅 Movimentação de {dataSelecionada.toLocaleDateString('pt-BR')}</h4>
+            <h4 style={{ color: theme.dark }}> 
+              Movimentação de {modoVisualizacao === 'dia' ? dataSelecionada.toLocaleDateString('pt-BR') : dataSelecionada.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
+            </h4>
             <div style={{ background: theme.light, padding: '6px 15px', borderRadius: '20px', border: `2px solid ${theme.success}`, color: theme.success, fontWeight: 'bold' }}>
-              Total Arrecadado: R$ {totalDoDia.toFixed(2).replace('.', ',')}
+              Total: R$ {totalArrecadado.toFixed(2).replace('.', ',')}
             </div>
           </Stack>
           
           <Divider style={{ margin: '15px 0 25px 0' }} />
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '15px', marginBottom: '30px' }}>
-            
+          {/* CARDS DE FORMAS DE PAGAMENTO */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '15px', marginBottom: '30px' }}>
             <div style={{ background: theme.light, padding: '15px', borderRadius: '8px', border: `1px solid ${theme.muted}`, borderLeft: `4px solid ${theme.success}` }}>
               <Stack spacing={10} alignItems="center">
-                <FaMoneyBillWave style={{ color: theme.success }} size={18} />
+                <FaMoneyBillWave style={{ color: theme.success }} size={16} />
                 <span style={{ fontSize: '11px', fontWeight: 'bold', color: theme.muted }}>DINHEIRO</span>
               </Stack>
               <h4 style={{ margin: '10px 0 0 0', color: theme.dark }}>R$ {faturamentoDinheiro.toFixed(2).replace('.', ',')}</h4>
@@ -124,7 +173,7 @@ export default function Dashboard() {
 
             <div style={{ background: theme.light, padding: '15px', borderRadius: '8px', border: `1px solid ${theme.muted}`, borderLeft: `4px solid ${theme.primary}` }}>
               <Stack spacing={10} alignItems="center">
-                <FaCreditCard style={{ color: theme.primary }} size={18} />
+                <FaCreditCard style={{ color: theme.primary }} size={16} />
                 <span style={{ fontSize: '11px', fontWeight: 'bold', color: theme.muted }}>CRÉDITO</span>
               </Stack>
               <h4 style={{ margin: '10px 0 0 0', color: theme.dark }}>R$ {faturamentoCredito.toFixed(2).replace('.', ',')}</h4>
@@ -132,7 +181,7 @@ export default function Dashboard() {
 
             <div style={{ background: theme.light, padding: '15px', borderRadius: '8px', border: `1px solid ${theme.muted}`, borderLeft: `4px solid ${theme.dark}` }}>
               <Stack spacing={10} alignItems="center">
-                <FaRegCreditCard style={{ color: theme.dark }} size={18} />
+                <FaRegCreditCard style={{ color: theme.dark }} size={16} />
                 <span style={{ fontSize: '11px', fontWeight: 'bold', color: theme.muted }}>DÉBITO</span>
               </Stack>
               <h4 style={{ margin: '10px 0 0 0', color: theme.dark }}>R$ {faturamentoDebito.toFixed(2).replace('.', ',')}</h4>
@@ -140,19 +189,39 @@ export default function Dashboard() {
 
             <div style={{ background: theme.light, padding: '15px', borderRadius: '8px', border: `1px solid ${theme.muted}`, borderLeft: `4px solid ${theme.success}` }}>
               <Stack spacing={10} alignItems="center">
-                <FaPix style={{ color: theme.success }} size={18} />
+                <FaPix style={{ color: theme.success }} size={16} />
                 <span style={{ fontSize: '11px', fontWeight: 'bold', color: theme.muted }}>PIX</span>
               </Stack>
               <h4 style={{ margin: '10px 0 0 0', color: theme.dark }}>R$ {faturamentoPix.toFixed(2).replace('.', ',')}</h4>
             </div>
-
           </div>
 
-          <h5 style={{ color: theme.dark }}>📝 Histórico de Entradas</h5>
+          {/* NOVA SEÇÃO: FATURAMENTO POR BARBEIRO */}
+          <h5 style={{ color: theme.dark, marginBottom: 15 }}>✂️ Faturamento por Profissional</h5>
+          <div style={{ background: theme.light, padding: '20px', borderRadius: '8px', border: `1px solid ${theme.muted}`, marginBottom: '30px' }}>
+            {barbeirosComReceita.length === 0 ? (
+               <p style={{ color: theme.muted, fontSize: '0.9em', margin: 0 }}>Nenhum serviço concluído neste período.</p>
+            ) : (
+              barbeirosComReceita.map((barbeiro, index) => {
+                const porcentagem = ((barbeiro.total / totalArrecadado) * 100).toFixed(0);
+                return (
+                  <div key={index} style={{ marginBottom: index !== barbeirosComReceita.length - 1 ? '15px' : '0' }}>
+                    <Stack justify="space-between" style={{ marginBottom: '5px' }}>
+                      <strong style={{ color: theme.dark }}>{barbeiro.nome}</strong>
+                      <strong style={{ color: theme.primary }}>R$ {barbeiro.total.toFixed(2).replace('.', ',')}</strong>
+                    </Stack>
+                    <Progress.Line percent={Number(porcentagem)} strokeColor={theme.primary} showInfo={true} />
+                  </div>
+                )
+              })
+            )}
+          </div>
+
+          <h5 style={{ color: theme.dark }}> Histórico de Entradas</h5>
           <Divider style={{ margin: '10px 0' }} />
           
           {historicoTransacoes.length === 0 ? (
-            <p style={{ color: theme.muted, textAlign: 'center', marginTop: 30, fontSize: '0.95em' }}>Nenhum recebimento registrado para este dia.</p>
+            <p style={{ color: theme.muted, textAlign: 'center', marginTop: 30, fontSize: '0.95em' }}>Nenhum recebimento registrado para este período.</p>
           ) : (
             historicoTransacoes.map((t, index) => (
               <Panel key={index} bordered style={{ background: theme.light, marginBottom: '8px', padding: '5px 10px', borderColor: theme.muted }}>
@@ -160,7 +229,7 @@ export default function Dashboard() {
                   <div>
                     <span style={{ color: theme.primary, fontWeight: 'bold', marginRight: '10px' }}>{t.hora}</span>
                     <strong style={{ color: theme.dark }}>{t.cliente}</strong>
-                    <div style={{ color: theme.muted, fontSize: '12px' }}>{t.servico}</div>
+                    <div style={{ color: theme.muted, fontSize: '12px' }}>{t.servico} • <span style={{ fontWeight: 'bold' }}>{t.barbeiro}</span></div>
                   </div>
                   <Stack spacing={15} alignItems="center">
                     <span style={{ border: `1px solid ${theme.muted}`, color: theme.muted, padding: '2px 8px', borderRadius: '10px', fontSize: '10px', fontWeight: 'bold', textTransform: 'uppercase' }}>
@@ -174,7 +243,6 @@ export default function Dashboard() {
               </Panel>
             ))
           )}
-
         </div>
       </div>
     </div>

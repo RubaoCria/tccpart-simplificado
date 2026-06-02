@@ -16,8 +16,19 @@ export class CreateClientDto {
   @IsEmail()
   email: string;
 
-  @ApiProperty({ example: 'Rua Exemplo, 123 - Bairro Exemplo' })
+  // Novos campos separados de endereço com a documentação do Swagger
+  @ApiProperty({ example: 'Rua das Flores', required: false })
   @IsString()
   @IsOptional()
-  address?: string;
+  street?: string;
+
+  @ApiProperty({ example: '123', required: false })
+  @IsString()
+  @IsOptional()
+  number?: string;
+
+  @ApiProperty({ example: 'Cianorte', required: false })
+  @IsString()
+  @IsOptional()
+  city?: string;
 }

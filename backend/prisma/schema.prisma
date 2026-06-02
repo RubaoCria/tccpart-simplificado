@@ -32,7 +32,8 @@ model Service {
   updatedAt       DateTime  @updatedAt
   deletedAt       DateTime?
 
-  appointments Appointment[]
+  // Relacionamento Muitos-para-Muitos
+  appointments    Appointment[] 
 
   @@map("services")
 }
@@ -41,8 +42,11 @@ model Client {
   id        Int       @id @default(autoincrement())
   name      String
   phone     String
-  address   String?
   email     String
+  // Campos de endereço separados
+  street    String?   
+  number    String?   
+  city      String?   
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
@@ -55,7 +59,7 @@ model Client {
 model Appointment {
   id                  Int      @id @default(autoincrement())
   clientId            Int
-  serviceId           Int
+  barberId            Int
   scheduledAt         DateTime
   endsAt              DateTime
   status              String   @default("agendado")
@@ -64,12 +68,32 @@ model Appointment {
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
-  client  Client  @relation(fields: [clientId], references: [id])
-  service Service @relation(fields: [serviceId], references: [id])
+  client   Client    @relation(fields: [clientId], references: [id])
+  barber   Barber    @relation(fields: [barberId], references: [id])
+  // Um agendamento agora pode conter múltiplos serviços
+  services Service[] 
 
   @@index([scheduledAt])
   @@index([endsAt])
   @@index([clientId])
-  @@index([serviceId])
+  @@index([barberId])
   @@map("appointments")
+}
+
+model Barber {
+  id        Int       @id @default(autoincrement())
+  name      String
+  phone     String?
+  email     String?
+  // Campos de endereço separados
+  street    String?   
+  number    String?   
+  city      String?   
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  appointments Appointment[] 
+
+  @@map("barbers")
 }

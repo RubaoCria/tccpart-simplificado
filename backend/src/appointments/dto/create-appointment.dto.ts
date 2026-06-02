@@ -6,6 +6,7 @@ import {
   IsOptional,
   IsString,
   Min,
+  IsArray,
 } from 'class-validator';
 import { APPOINTMENT_STATUSES } from '../appointment-status';
 import type { AppointmentStatus } from '../appointment-status';
@@ -16,10 +17,17 @@ export class CreateAppointmentDto {
   @Min(1)
   clientId: number;
 
-  @ApiProperty({ example: 1 })
+  // ATUALIZADO: Trocamos o serviceId único por uma lista (Array) de serviços
+  @ApiProperty({ example: [1, 2], description: 'Lista de IDs dos serviços escolhidos', type: [Number] })
+  @IsArray()
+  @IsInt({ each: true }) // Valida que cada item da lista é um número inteiro
+  @Min(1, { each: true })
+  serviceIds: number[];
+
+  @ApiProperty({ example: 1, description: 'ID do barbeiro que realizará o serviço' })
   @IsInt()
   @Min(1)
-  serviceId: number;
+  barberId: number;
 
   @ApiProperty({ example: '2026-06-01T14:30:00.000Z' })
   @IsDateString()

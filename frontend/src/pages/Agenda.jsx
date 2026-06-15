@@ -167,9 +167,7 @@ export default function Agenda() {
             onClean={() => setBarbeiroFiltro(null)}
           />
         </Stack>
-        <Button appearance="subtle" color="red" onClick={handleLogout} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 'bold' }}>
-          <FaRightFromBracket /> Sair
-        </Button>
+        
       </Stack>
 
       <Stack spacing={20} style={{ marginBottom: 25, flexWrap: 'wrap' }}>

@@ -1,4 +1,4 @@
--- CreateTable
+/* Criando Tabela "admins" */
 CREATE TABLE "admins" (
     "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     "email" TEXT NOT NULL,
@@ -8,7 +8,7 @@ CREATE TABLE "admins" (
     "deletedAt" DATETIME
 );
 
--- CreateTable
+/* Criando Tabela "services" */
 CREATE TABLE "services" (
     "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     "title" TEXT NOT NULL,
@@ -20,7 +20,7 @@ CREATE TABLE "services" (
     "deletedAt" DATETIME
 );
 
--- CreateTable
+/* Criando Tabela "clients" */
 CREATE TABLE "clients" (
     "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     "name" TEXT NOT NULL,
@@ -30,8 +30,7 @@ CREATE TABLE "clients" (
     "updatedAt" DATETIME NOT NULL,
     "deletedAt" DATETIME
 );
-
--- CreateTable
+/*Criando Tabela "appointments" */
 CREATE TABLE "appointments" (
     "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     "clientId" INTEGER NOT NULL,
@@ -46,14 +45,13 @@ CREATE TABLE "appointments" (
     CONSTRAINT "appointments_serviceId_fkey" FOREIGN KEY ("serviceId") REFERENCES "services" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
--- CreateIndex
+ /* criando índices */
 CREATE UNIQUE INDEX "admins_email_key" ON "admins"("email");
 
--- CreateIndex
+/* criando índices */
 CREATE INDEX "appointments_scheduledAt_idx" ON "appointments"("scheduledAt");
 
--- CreateIndex
+/* Criando Índice */
 CREATE INDEX "appointments_clientId_idx" ON "appointments"("clientId");
-
--- CreateIndex
+/* Criando Índice */
 CREATE INDEX "appointments_serviceId_idx" ON "appointments"("serviceId");

@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
-import { Container, Header, Sidebar, Content, CustomProvider } from 'rsuite';
+import { Container, Header, Sidebar, Content, CustomProvider, Button } from 'rsuite'; 
 import { FaCalendarDays, FaUsers, FaScissors, FaClock, FaChartSimple } from 'react-icons/fa6';
 import 'rsuite/dist/rsuite.min.css';
 import { FaUserTie } from 'react-icons/fa6';
@@ -11,7 +11,7 @@ import Clientes from './pages/Clientes';
 import Servicos from './pages/Servicos';
 import Horarios from './pages/Horarios';
 import Dashboard from './pages/Dashboard';
-import Barbeiros from './pages/Barbeiros'; // <--- Adicione esta linha
+import Barbeiros from './pages/Barbeiros'; 
 
 // Componente para o menu lateral funcionar com as rotas
 function SidebarMenu() {
@@ -54,11 +54,41 @@ export default function App() {
 
   return (
     <CustomProvider>
+      
+      {/* Estilo embutido para o botão de sair */}
+      <style>
+        {`
+          .btn-sair {
+            background-color: #5C218F !important; /* Roxo um pouco mais escuro que o Header */
+            color: white !important;
+            border: 1px solid #5C218F !important;
+            transition: all 0.3s ease !important;
+            font-weight: bold !important;
+          }
+          .btn-sair:hover {
+            background-color: white !important;
+            color: #5C218F !important;
+            border: 1px solid white !important;
+          }
+        `}
+      </style>
+
       <BrowserRouter>
         <Container style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
+          
           <Header style={{ background: '#7B2CBF', color: 'white', padding: '10px 30px', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', height: '60px' }}>
-            {/* Seu Header permanece o mesmo */}
+            <Button 
+              className="btn-sair"
+              appearance="primary" 
+              onClick={() => {
+                localStorage.removeItem('token'); // Remove o login salvo
+                window.location.href = '/'; // Redireciona forçando a tela de login a aparecer
+              }}
+            >
+               Sair do Sistema
+            </Button>
           </Header>
+
           <Container style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
             <SidebarMenu />
             <Content style={{ padding: '30px', background: '#f5f5f5', overflowY: 'auto' }}>
@@ -75,6 +105,7 @@ export default function App() {
               </div>
             </Content>
           </Container>
+          
         </Container>
       </BrowserRouter>
     </CustomProvider>

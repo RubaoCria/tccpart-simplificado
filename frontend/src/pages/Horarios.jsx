@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Form, Button, Table, Message, useToaster, Stack, SelectPicker, CheckPicker, Panel, Modal } from 'rsuite';
+import { Form, Button, Table, Message, useToaster, Stack, SelectPicker, CheckPicker, Panel, Modal, Input } from 'rsuite';
 import * as z from 'zod';
 import { api } from '../services/api';
 import BlurText from '../components/BlurText';
-import GooeyNav from '../components/GooeyNav';
 
 const { Column, HeaderCell, Cell } = Table;
 
@@ -16,6 +15,14 @@ const schema = z.object({
 });
 
 export default function Horarios() {
+  const [buscaCliente, setBuscaCliente] = useState('');
+
+  // ESTADOS DO CADASTRO RÁPIDO DE CLIENTE (AGORA COM ENDEREÇO)
+  const [modalClienteRapidoAberto, setModalClienteRapidoAberto] = useState(false);
+  const [novoClienteForm, setNovoClienteForm] = useState({ 
+    name: '', email: '', phone: '', street: '', number: '', city: '' 
+  });
+
   const [formData, setFormData] = useState({ clientId: '', serviceIds: [], barberId: '' });
   const [dataAgenda, setDataAgenda] = useState(''); 
   const [horaAgenda, setHoraAgenda] = useState(''); 
@@ -96,6 +103,36 @@ export default function Horarios() {
     }
   };
 
+  // ========================================================
+  // FUNÇÃO PARA SALVAR O CLIENTE RÁPIDO
+  // ========================================================
+  const salvarClienteRapido = async () => {
+    if (!novoClienteForm.name || !novoClienteForm.phone || !novoClienteForm.email) {
+      mostrarNotificacao('warning', 'Preencha pelo menos Nome, E-mail e Telefone.');
+      return;
+    }
+    
+    setCarregando(true);
+    try {
+      const clienteCriado = await api('/clients', { method: 'POST', body: JSON.stringify(novoClienteForm) });
+      
+      const dadosClientes = await api('/clients', { method: 'GET' });
+      setClientes(dadosClientes.map(c => ({ label: c.name, value: String(c.id) })));
+      
+      if (clienteCriado && clienteCriado.id) {
+        setFormData(prev => ({ ...prev, clientId: String(clienteCriado.id) }));
+      }
+      
+      mostrarNotificacao('success', 'Cliente cadastrado com sucesso!');
+      setModalClienteRapidoAberto(false);
+    } catch (err) {
+      mostrarNotificacao('error', 'Erro ao cadastrar cliente: ' + err.message);
+    } finally {
+      setCarregando(false);
+    }
+  };
+  // ========================================================
+
   const gerarSlotsDinamicos = () => {
     const slots = [];
     const parseTime = (timeStr) => {
@@ -126,7 +163,6 @@ export default function Horarios() {
   const verificarDisponibilidadeSlot = (slot) => {
     if (!dataAgenda || formData.serviceIds.length === 0 || !formData.barberId) return true;
     
-    // TRAVA DE TEMPO: Verifica se o horário selecionado já passou
     const inicioProposto = new Date(`${dataAgenda}T${slot}:00`).getTime();
     const agora = new Date().getTime();
     
@@ -134,7 +170,6 @@ export default function Horarios() {
       return false; 
     }
 
-    // Calcula a duração somada de todos os serviços escolhidos
     const servicosEscolhidos = servicos.filter(s => formData.serviceIds.includes(s.value));
     const duracaoTotal = servicosEscolhidos.reduce((total, s) => total + s.durationMinutes, 0) || 30;
     const fimProposto = inicioProposto + (duracaoTotal * 60 * 1000);
@@ -148,7 +183,6 @@ export default function Horarios() {
       const duracaoExistente = ag.services ? ag.services.reduce((total, s) => total + s.durationMinutes, 0) : 30;
       const fimExistente = inicioExistente + (duracaoExistente * 60 * 1000);
       
-      // Checa se os blocos de tempo se sobrepõem
       return (inicioProposto < fimExistente && fimProposto > inicioExistente);
     });
   };
@@ -174,7 +208,6 @@ export default function Horarios() {
       const duracaoTotal = servicosEscolhidos.reduce((total, s) => total + s.durationMinutes, 0);
       
       const dataFormatadaISO = new Date(`${dataAgenda}T${horaAgenda}:00`).toISOString();
-      const dataFimISO = new Date(new Date(`${dataAgenda}T${horaAgenda}:00`).getTime() + (duracaoTotal * 60 * 1000)).toISOString();
 
       const dadosParaSalvar = {
         clientId: Number(formData.clientId),
@@ -218,6 +251,7 @@ export default function Horarios() {
     setFormData({ clientId: '', serviceIds: [], barberId: '' });
     setDataAgenda('');
     setHoraAgenda('');
+    setBuscaCliente('');
     setModalFormAberto(true);
   };
 
@@ -227,6 +261,7 @@ export default function Horarios() {
     setFormData({ clientId: '', serviceIds: [], barberId: '' });
     setDataAgenda('');
     setHoraAgenda('');
+    setBuscaCliente('');
   };
 
   const iniciarEdicao = (ag) => {
@@ -244,7 +279,7 @@ export default function Horarios() {
     }
     setFormData({ 
         clientId: String(ag.clientId), 
-        serviceIds: ag.services ? ag.services.map(s => String(s.id)) : [], // Carrega múltiplos IDs
+        serviceIds: ag.services ? ag.services.map(s => String(s.id)) : [],
         barberId: String(ag.barberId || '') 
     });
     setModalFormAberto(true);
@@ -320,6 +355,7 @@ export default function Horarios() {
         </Table>
       </div>
 
+      {/* MODAL PRINCIPAL: AGENDAMENTO */}
       <Modal open={modalFormAberto} onClose={fecharModalForm} size="md" overflow={true}>
         <Modal.Header><Modal.Title>{editandoId ? '✍️ Editar Agendamento' : '✨ Agendar Novo Horário'}</Modal.Title></Modal.Header>
         <Modal.Body style={{ paddingRight: 10 }}>
@@ -327,11 +363,47 @@ export default function Horarios() {
             <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
               <Form.Group style={{ flex: 1, minWidth: '150px' }}>
                 <Form.ControlLabel>Cliente</Form.ControlLabel>
-                <SelectPicker data={clientes} block value={formData.clientId} onChange={(val) => setFormData({ ...formData, clientId: val })} />
+                <SelectPicker 
+                  data={clientes} 
+                  block 
+                  value={formData.clientId} 
+                  onChange={(val) => setFormData({ ...formData, clientId: val })} 
+                  onSearch={(keyword) => setBuscaCliente(keyword)}
+                  renderExtraFooter={() => {
+                    const clienteNaoEncontrado = buscaCliente && !clientes.some(c => c.label.toLowerCase().includes(buscaCliente.toLowerCase()));
+
+                    if (clienteNaoEncontrado) {
+                      return (
+                        <div style={{ padding: '15px', textAlign: 'center', borderTop: '1px solid #e5e5ea', background: '#f9fafb' }}>
+                          <p style={{ marginBottom: '10px', color: '#6b7280', fontSize: '13px' }}>Cliente não encontrado.</p>
+                          <Button 
+                            appearance="primary" 
+                            color="violet" 
+                            size="sm"
+                            onClick={() => {
+                              // Abre o modal com os campos vazios e o nome já digitado
+                              setNovoClienteForm({ 
+                                name: buscaCliente, 
+                                email: '', 
+                                phone: '', 
+                                street: '', 
+                                number: '', 
+                                city: '' 
+                              });
+                              setModalClienteRapidoAberto(true);
+                            }}
+                          >
+                            + Cadastrar "{buscaCliente}"
+                          </Button>
+                        </div>
+                      );
+                    }
+                    return null;
+                  }}
+                />
               </Form.Group>
               <Form.Group style={{ flex: 1, minWidth: '150px' }}>
                 <Form.ControlLabel>Serviços (Selecione um ou mais)</Form.ControlLabel>
-                {/* Aqui está o CheckPicker nativo do RSuite para múltiplas seleções */}
                 <CheckPicker data={servicos} block value={formData.serviceIds} searchable={false} placeholder="Selecione..." onChange={(val) => { setFormData({ ...formData, serviceIds: val }); setHoraAgenda(''); }} />
               </Form.Group>
               <Form.Group style={{ flex: 1, minWidth: '150px' }}>
@@ -367,7 +439,7 @@ export default function Horarios() {
                          onClick={() => setHoraAgenda(slot)}
                          style={{
                            textDecoration: disponivel ? 'none' : 'line-through',
-                           backgroundColor: disponivel ? (horaAgenda === slot ? '#8b5cf6' : '#f3f4f6') : '#fee2e2', // Fundo vermelho claro se indisponível
+                           backgroundColor: disponivel ? (horaAgenda === slot ? '#8b5cf6' : '#f3f4f6') : '#fee2e2',
                            color: disponivel ? (horaAgenda === slot ? '#fff' : '#1f2937') : '#9ca3af',
                            border: disponivel ? '1px solid #d1d5db' : '1px solid #fca5a5'
                          }}
@@ -389,6 +461,56 @@ export default function Horarios() {
         </Modal.Footer>
       </Modal>
 
+      {/* MODAL SECUNDÁRIO: CADASTRO RÁPIDO DE CLIENTE */}
+      <Modal open={modalClienteRapidoAberto} onClose={() => setModalClienteRapidoAberto(false)} size="sm">
+        <Modal.Header><Modal.Title>⚡ Cadastro Rápido</Modal.Title></Modal.Header>
+        <Modal.Body>
+          <Form fluid>
+            <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', marginBottom: '15px' }}>
+              <Form.Group style={{ flex: 1, minWidth: '200px' }}>
+                <Form.ControlLabel>Nome Completo</Form.ControlLabel>
+                <Form.Control name="name" accepter={Input} value={novoClienteForm.name} onChange={(val) => setNovoClienteForm({ ...novoClienteForm, name: val })} />
+              </Form.Group>
+              <Form.Group style={{ flex: 1, minWidth: '200px' }}>
+                <Form.ControlLabel>E-mail</Form.ControlLabel>
+                <Form.Control name="email" accepter={Input} type="email" value={novoClienteForm.email} onChange={(val) => setNovoClienteForm({ ...novoClienteForm, email: val })} />
+              </Form.Group>
+            </div>
+
+            <div style={{ marginBottom: '15px' }}>
+              <Form.Group style={{ width: '100%', maxWidth: '300px' }}>
+                <Form.ControlLabel>Telefone / WhatsApp</Form.ControlLabel>
+                <Form.Control name="phone" accepter={Input} value={novoClienteForm.phone} onChange={(val) => setNovoClienteForm({ ...novoClienteForm, phone: val })} />
+              </Form.Group>
+            </div>
+
+            <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
+              <Form.Group style={{ flex: 2, minWidth: '150px' }}>
+                <Form.ControlLabel>Rua / Residência</Form.ControlLabel>
+                <Form.Control name="street" accepter={Input} value={novoClienteForm.street} onChange={(val) => setNovoClienteForm({ ...novoClienteForm, street: val })} />
+              </Form.Group>
+              <Form.Group style={{ flex: 1, minWidth: '80px' }}>
+                <Form.ControlLabel>Número</Form.ControlLabel>
+                <Form.Control name="number" accepter={Input} value={novoClienteForm.number} onChange={(val) => setNovoClienteForm({ ...novoClienteForm, number: val })} />
+              </Form.Group>
+              <Form.Group style={{ flex: 1, minWidth: '150px' }}>
+                <Form.ControlLabel>Cidade</Form.ControlLabel>
+                <Form.Control name="city" accepter={Input} value={novoClienteForm.city} onChange={(val) => setNovoClienteForm({ ...novoClienteForm, city: val })} />
+              </Form.Group>
+            </div>
+          </Form>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button appearance="primary" color="violet" onClick={salvarClienteRapido} loading={carregando}>
+            Salvar e Continuar Agendamento
+          </Button>
+          <Button appearance="subtle" onClick={() => setModalClienteRapidoAberto(false)}>
+            Cancelar
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* MODAL CANCELAR */}
       <Modal open={modalCancelarAberto} onClose={() => setModalCancelarAberto(false)} size="xs">
         <Modal.Header><Modal.Title>Cancelar Agendamento</Modal.Title></Modal.Header>
         <Modal.Body>Tem certeza que deseja cancelar este agendamento?</Modal.Body>
@@ -400,4 +522,4 @@ export default function Horarios() {
 
     </div>
   );
-}y
+}

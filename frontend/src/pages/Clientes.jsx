@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Form, Button, Table, Input, Message, useToaster, Schema, Stack, Modal, Loader } from 'rsuite';
 import { api } from '../services/api';
 import BlurText from '../components/BlurText';
-import FadeContent from '../components/FadeContent';
+
 
 const { Column, HeaderCell, Cell } = Table;
 const { StringType } = Schema.Types;

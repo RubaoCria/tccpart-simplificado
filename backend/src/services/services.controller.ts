@@ -18,8 +18,8 @@ import { UpdateServiceDto } from './dto/update-service.dto';
 import { ServicesService } from './services.service';
 
 @ApiTags('services')
-@ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@ApiBearerAuth() /*CARDAPIO: Indica que as rotas deste controlador requerem autenticação via token JWT*/
+@UseGuards(JwtAuthGuard) /*SEGURANÇA: Somente usuários autenticados podem acessar as rotas de serviços*/
 @Controller('services')
 export class ServicesController {
   constructor(private readonly services: ServicesService) {}

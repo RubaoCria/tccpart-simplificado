@@ -31,12 +31,12 @@ export class AppointmentsController {
     return this.appointments.create(dto);
   }
 
-  @Get()
+  @Get()//busca
   findAll(@Query() query: FindAppointmentsQueryDto) {
     return this.appointments.findAll(query);
   }
 
-  @Get(':id')
+  @Get(':id')//busca por id
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.appointments.findOne(id);
   }

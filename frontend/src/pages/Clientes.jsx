@@ -3,22 +3,22 @@ import { Form, Button, Table, Input, Message, useToaster, Schema, Stack, Modal, 
 import { api } from '../services/api';
 import BlurText from '../components/BlurText';
 
-
 const { Column, HeaderCell, Cell } = Table;
 const { StringType } = Schema.Types;
 
-// ATUALIZADO: Substituído o 'address' por street, number e city
+/* Obrigatório e Validação Inicial (Frontend)
+  Aqui garantimos que o usuário não deixe os campos em branco.
+*/
 const model = Schema.Model({
   name: StringType().isRequired('O nome é obrigatório.'),
   email: StringType().isEmail('Insira um e-mail válido.').isRequired('O e-mail é obrigatório.'),
   phone: StringType().isRequired('O telefone é obrigatório.'),
-  street: StringType(),
-  number: StringType(),
-  city: StringType()
+  street: StringType().isRequired('A rua / residência é obrigatória.'),
+  number: StringType().isRequired('O número é obrigatório.'),
+  city: StringType().isRequired('A cidade é obrigatória.')
 });
 
 export default function Clientes() {
-  // ATUALIZADO: Estado inicial com os novos campos
   const [formData, setFormData] = useState({ name: '', email: '', phone: '', street: '', number: '', city: '' });
   const [clientes, setClientes] = useState([]);
   const [carregando, setCarregando] = useState(false);
@@ -68,7 +68,18 @@ export default function Clientes() {
       fecharModalForm(); 
       buscarClientes();
     } catch (err) {
-      mostrarNotificacao('error', 'Erro: ' + err.message);
+      // 💡 PARA A BANCA: Tratamento de Erro de Duplicidade
+      // Se a API retornar um erro (ex: código 400 ou 409) indicando que o email ou telefone já existe,
+      // nós capturamos a mensagem e exibimos para o usuário, impedindo o cadastro.
+      let errorMessage = 'Erro ao salvar cliente.';
+      
+      if (err.message) {
+         // A mensagem de erro da API deve ser clara. 
+         // Exemplo: "E-mail já cadastrado" ou "Telefone já cadastrado"
+         errorMessage = err.message; 
+      }
+      
+      mostrarNotificacao('error', errorMessage);
     } finally {
       setCarregando(false);
     }
@@ -82,7 +93,6 @@ export default function Clientes() {
 
   const iniciarEdicao = (cliente) => {
     setEditandoId(cliente.id);
-    // ATUALIZADO: Carregando os campos divididos na edição
     setFormData({ 
       name: cliente.name, 
       email: cliente.email, 
@@ -139,7 +149,6 @@ export default function Clientes() {
           <Column flexGrow={2}><HeaderCell>E-mail</HeaderCell><Cell dataKey="email" /></Column>
           <Column flexGrow={1}><HeaderCell>Telefone</HeaderCell><Cell dataKey="phone" /></Column>
           
-          {/* ATUALIZADO: Formatação visual do endereço na tabela */}
           <Column flexGrow={2}>
             <HeaderCell>Endereço</HeaderCell>
             <Cell>
@@ -194,7 +203,6 @@ export default function Clientes() {
               </Form.Group>
             </div>
 
-            {/* ATUALIZADO: Inputs de Endereço separados */}
             <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
               <Form.Group style={{ flex: 2, minWidth: '200px' }}>
                 <Form.ControlLabel>Rua / Residência</Form.ControlLabel>

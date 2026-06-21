@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service'; // Verifique se o caminho do import está correto
 import { CreateBarberDto } from './dto/create-barber.dto';
 import { UpdateBarberDto } from './dto/update-barber.dto';
@@ -7,7 +7,27 @@ import { UpdateBarberDto } from './dto/update-barber.dto';
 export class BarbersService {
   constructor(private readonly prisma: PrismaService) {}
 
-  create(dto: CreateBarberDto) {
+  // ========================================================================
+  // AQUI FAZ O CADASTRO (E BARRA DADOS REPETIDOS)
+  // ========================================================================
+  async create(dto: CreateBarberDto) {
+    
+    // AQUI: O Prisma vai no banco e procura se já tem algum barbeiro com esse email ou telefone
+    const barbeiroExistente = await this.prisma.barber.findFirst({
+      where: {
+        OR: [
+          { email: dto.email },
+          { phone: dto.phone },
+        ],
+        deletedAt: null, // Ignora os que já foram deletados
+      },
+    });
+
+    // AQUI: Se achar alguém, o NestJS joga um erro e o cadastro é interrompido
+    if (barbeiroExistente) {
+      throw new ConflictException('Este e-mail ou telefone já está cadastrado para outro profissional.');
+    }
+
     return this.prisma.barber.create({ data: dto });
   }
 
@@ -28,8 +48,31 @@ export class BarbersService {
     return barber;
   }
 
+  // ========================================================================
+  // AQUI FAZ A ATUALIZAÇÃO (E GARANTE QUE NÃO ROUBOU DADO DE OUTRO)
+  // ========================================================================
   async update(id: number, dto: UpdateBarberDto) {
     await this.findOne(id); // Verifica se existe antes de atualizar
+
+    // AQUI: Se o usuário estiver tentando mudar o email ou telefone, faz a checagem
+    if (dto.email || dto.phone) {
+      const conflitoDeDados = await this.prisma.barber.findFirst({
+        where: {
+          OR: [
+            { email: dto.email },
+            { phone: dto.phone },
+          ],
+          id: { not: id }, // AQUI: Ignora o ID do próprio barbeiro que estamos editando
+          deletedAt: null,
+        },
+      });
+
+      // AQUI: Se a busca achar que esse dado já é de outro barbeiro, ele bloqueia a edição
+      if (conflitoDeDados) {
+        throw new ConflictException('Este e-mail ou telefone já pertence a outro profissional.');
+      }
+    }
+
     return this.prisma.barber.update({ where: { id }, data: dto });
   }
 
